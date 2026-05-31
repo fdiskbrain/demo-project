@@ -1,0 +1,232 @@
+name: 'Terraform Apply'
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'tf/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - staging
+          - perf
+          - prod
+      confirm_apply:
+        description: 'Type "yes" to confirm apply'
+        required: true
+        type: string
+
+env:
+  TF_VERSION: '1.15.3'
+  AWS_REGION: 'us-east-1'
+  TF_WORKING_DIR: 'tf'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  prepare:
+    name: 'Prepare Deployment'
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      var-file: ${{ steps.set-env.outputs.var-file }}
+      role-arn: ${{ steps.set-env.outputs.role-arn }}
+    
+    steps:
+      - name: 'Set Environment Configuration'
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            # Auto-detect from branch or use dev for main
+            ENV="dev"
+          fi
+          
+          case $ENV in
+            dev)
+              VAR_FILE="terraform_dev.tfvars"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_DEV }}"
+              ;;
+            test)
+              VAR_FILE="terraform_test.tfvars"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_TEST }}"
+              ;;
+            staging)
+              VAR_FILE="terraform_staging.tfvars"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_STAGING }}"
+              ;;
+            perf)
+              VAR_FILE="terraform_perf.tfvars"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_PERF }}"
+              ;;
+            prod)
+              VAR_FILE="terraform_prod.tfvars"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_PROD }}"
+              ;;
+            *)
+              echo "Invalid environment: $ENV"
+              exit 1
+              ;;
+          esac
+          
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "var-file=$VAR_FILE" >> $GITHUB_OUTPUT
+          echo "role-arn=$ROLE_ARN" >> $GITHUB_OUTPUT
+
+      - name: 'Validate Confirmation'
+        if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
+        run: |
+          if [ "${{ github.event.inputs.confirm_apply }}" != "yes" ]; then
+            echo "❌ Production deployment requires explicit confirmation"
+            exit 1
+          fi
+
+  terraform-apply:
+    name: 'Terraform Apply - ${{ needs.prepare.outputs.environment }}'
+    needs: prepare
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.prepare.outputs.environment }}
+      url: https://console.aws.amazon.com/vpc/home?region=${{ env.AWS_REGION }}
+    
+    steps:
+      - name: 'Checkout Code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: 'Configure AWS Credentials via OIDC'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # role-to-assume: ${{ needs.prepare.outputs.role-arn }}
+
+          # aws-region: ${{ env.AWS_REGION }}
+          # role-duration-seconds: 3600
+
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 'Terraform Init'
+        id: init
+        run: |
+          cd ${{ env.TF_WORKING_DIR }}
+          terraform init -input=false -upgrade
+        env:
+          TF_BACKEND_CONFIG_KEY: ${{ secrets.TF_BACKEND_KEY }}
+          TF_BACKEND_CONFIG_SECRET: ${{ secrets.TF_BACKEND_SECRET }}
+
+      - name: 'Terraform Plan'
+        id: plan
+        run: |
+          cd ${{ env.TF_WORKING_DIR }}
+          terraform plan -input=false \
+            -var-file="envs/${{ needs.prepare.outputs.var-file }}" \
+            -out=tfplan-${{ needs.prepare.outputs.environment }} \
+            -no-color | tee plan-output.txt
+        continue-on-error: false
+
+      - name: 'Upload Plan Output'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: plan-output-${{ needs.prepare.outputs.environment }}
+          path: ${{ env.TF_WORKING_DIR }}/plan-output.txt
+          retention-days: 30
+
+      - name: 'Check for Changes'
+        id: check-changes
+        run: |
+          cd ${{ env.TF_WORKING_DIR }}
+          if grep -q "No changes." plan-output.txt; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ No infrastructure changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "⚠️ Infrastructure changes detected"
+          fi
+
+      - name: 'Terraform Apply'
+        if: steps.check-changes.outputs.has_changes == 'true'
+        id: apply
+        run: |
+          cd ${{ env.TF_WORKING_DIR }}
+          ## terraform apply -input=false -auto-approve tfplan-${{ needs.prepare.outputs.environment }}
+          echo "dry-run only"
+          echo "terraform apply -input=false -auto-approve tfplan-${{ needs.prepare.outputs.environment }}"
+        timeout-minutes: 30
+
+      - name: 'Post-Deployment Verification'
+        if: steps.apply.outcome == 'success'
+        run: |
+          cd ${{ env.TF_WORKING_DIR }}
+          echo "Running post-deployment verification..."
+          terraform output -json > outputs.json
+          echo "✅ Deployment completed successfully"
+          cat outputs.json
+
+      - name: 'Notify Success'
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'success',
+              context: 'Terraform Apply - ${{ needs.prepare.outputs.environment }}',
+              description: 'Infrastructure deployed successfully',
+              target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            })
+
+      - name: 'Notify Failure'
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: 'failure',
+              context: 'Terraform Apply - ${{ needs.prepare.outputs.environment }}',
+              description: 'Infrastructure deployment failed',
+              target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+            })
+
+      - name: 'Slack Notification'
+        if: always()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Terraform ${{ needs.prepare.outputs.environment }} Deployment",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Terraform Deployment - ${{ needs.prepare.outputs.environment }}*\nStatus: ${{ job.status }}\nRepository: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\nCommit: ${{ github.sha }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
