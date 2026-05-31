@@ -91,14 +91,14 @@ jobs:
               body: `${status} **Terraform Validation**: ${outcome}`
             })
 
-  terraform-plan-dev: 
+  terraform-plan-dev:
     env:
       ENVIRONMENT: dev
     name: 'Terraform Plan - Dev'
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'dev' environment in GitHub repo settings if environment protection is needed
-    
+
     steps: &tfplan-steps
       - name: 'Checkout Code'
         uses: actions/checkout@v4
@@ -127,7 +127,7 @@ jobs:
         id: plan
         run: |
           cd ${{ env.TF_WORKING_DIR }}
-          terraform plan -input=false -var-file="envs/terraform_${{ env.ENVIRONMENT }}.tfvars" -out=tfplan-${{ env.ENVIRONM-no-color  | tee plan-output.txt
+          terraform plan -input=false -var-file="envs/terraform_${{ env.ENVIRONMENT }}.tfvars" -out=tfplan-${{ env.ENVIRONMENT}} -no-color  | tee plan-output.txt
 
       - name: 'Upload Plan Artifact'
         if: steps.plan.outcome == 'success'
@@ -159,9 +159,8 @@ jobs:
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'staging' environment in GitHub repo settings if environment protection is needed
-    
-    steps: 
-      *tfplan-steps
+
+    steps: *tfplan-steps
 
   terraform-plan-test:
     env:
@@ -170,22 +169,19 @@ jobs:
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'test' environment in GitHub repo settings if environment protection is needed
-    
-    steps:
-      *tfplan-steps
 
+    steps: *tfplan-steps
 
-   terraform-plan-perf:
+  terraform-plan-perf:
     env:
       ENVIRONMENT: perf
     name: 'Terraform Plan - perf'
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'perf' environment in GitHub repo settings if environment protection is needed
-    
-    steps:
-      *tfplan-steps
-     
+
+    steps: *tfplan-steps
+
   terraform-plan-prod:
     env:
       ENVIRONMENT: prod
@@ -193,6 +189,5 @@ jobs:
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'prod' environment in GitHub repo settings if environment protection is needed
-    
-    steps:
-      *tfplan-steps
+
+    steps: *tfplan-steps
