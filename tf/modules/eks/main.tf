@@ -5,7 +5,7 @@ module "eks" {
   source  = "terraform-aws-modules/eks/aws"
   version = "~> 21.0"
 
-  name    = var.cluster_name
+  name               = var.cluster_name
   kubernetes_version = var.kubernetes_version
 
   # VPC Configuration
@@ -14,7 +14,7 @@ module "eks" {
   control_plane_subnet_ids = length(var.private_subnet_ids) > 0 ? var.private_subnet_ids : var.subnet_ids
 
   # Cluster Endpoint Access
-  endpoint_public_access  = var.enable_public_endpoint
+  endpoint_public_access = var.enable_public_endpoint
 
   # Public access CIDRs (restricted when public endpoint is enabled)
   # cluster_endpoint_public_access_cidrs = var.public_access_cidrs
