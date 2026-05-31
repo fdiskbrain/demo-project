@@ -95,7 +95,7 @@ jobs:
     name: 'Terraform Plan - Dev'
     needs: terraform-validate
     runs-on: ubuntu-latest
-    environment: dev
+    # Note: Configure 'dev' environment in GitHub repo settings if environment protection is needed
     
     steps:
       - name: 'Checkout Code'
@@ -107,11 +107,11 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: 'Configure AWS Credentials'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
-          aws-region: ${{ env.AWS_REGION }}
+      # - name: 'Configure AWS Credentials'
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEV }}
+      #     aws-region: ${{ env.AWS_REGION }}
 
       - name: 'Terraform Init'
         run: |
@@ -151,7 +151,7 @@ jobs:
     name: 'Terraform Plan - Staging'
     needs: terraform-validate
     runs-on: ubuntu-latest
-    environment: staging
+    # Note: Configure 'staging' environment in GitHub repo settings if environment protection is needed
     
     steps:
       - name: 'Checkout Code'
@@ -163,11 +163,11 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: 'Configure AWS Credentials'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
-          aws-region: ${{ env.AWS_REGION }}
+      # - name: 'Configure AWS Credentials'
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
+      #     aws-region: ${{ env.AWS_REGION }}
 
       - name: 'Terraform Init'
         run: |
@@ -193,7 +193,7 @@ jobs:
     name: 'Terraform Plan - Test'
     needs: terraform-validate
     runs-on: ubuntu-latest
-    environment: test
+    # Note: Configure 'test' environment in GitHub repo settings if environment protection is needed
     
     steps:
       - name: 'Checkout Code'
@@ -205,11 +205,11 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: 'Configure AWS Credentials'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_TEST }}
-          aws-region: ${{ env.AWS_REGION }}
+      # - name: 'Configure AWS Credentials'
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN_TEST }}
+      #     aws-region: ${{ env.AWS_REGION }}
 
       - name: 'Terraform Init'
         run: |
@@ -235,7 +235,7 @@ jobs:
     name: 'Terraform Plan - Prod'
     needs: terraform-validate
     runs-on: ubuntu-latest
-    environment: production
+    # Note: Configure 'prod' environment in GitHub repo settings if environment protection is needed
     
     steps:
       - name: 'Checkout Code'
@@ -246,12 +246,12 @@ jobs:
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-
-      - name: 'Configure AWS Credentials'
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
-          aws-region: ${{ env.AWS_REGION }}
+      ## TODO: Uncomment and configure AWS credentials
+      # - name: 'Configure AWS Credentials'
+      #   uses: aws-actions/configure-aws-credentials@v4
+      #   with:
+      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
+      #     aws-region: ${{ env.AWS_REGION }}
 
       - name: 'Terraform Init'
         run: |
