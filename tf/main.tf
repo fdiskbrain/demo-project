@@ -30,7 +30,7 @@ variable "aws_region" {
 
 locals {
   common_tags = {
-    project     = var.project
+    Project     = var.project
     Environment = var.environment
     ManagedBy   = "Terraform"
   }

@@ -30,19 +30,14 @@ output "cluster_security_group_id" {
   value       = module.eks.cluster_security_group_id
 }
 
-output "node_group_id" {
+output "eks_managed_node_groups" {
   description = "The ID of the default node group"
-  value       = module.eks.eks_managed_node_groups["default"].id
+  value       = module.eks.eks_managed_node_groups
 }
 
-output "node_group_arn" {
-  description = "Amazon Resource Name (ARN) of the default node group"
-  value       = module.eks.eks_managed_node_groups["default"].node_group_arn
-}
-
-output "node_group_status" {
-  description = "Status of the default node group"
-  value       = module.eks.eks_managed_node_groups["default"].status
+output "oidc_provider" {
+  description = "The oidc_provider"
+  value       = module.eks.oidc_provider
 }
 
 output "cluster_role_arn" {
@@ -50,7 +45,4 @@ output "cluster_role_arn" {
   value       = module.eks.cluster_iam_role_arn
 }
 
-output "node_group_role_arn" {
-  description = "ARN of the IAM role for the default node group"
-  value       = module.eks.eks_managed_node_groups["default"].iam_role_arn
-}
+

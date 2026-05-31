@@ -71,7 +71,11 @@ output "eks_cluster_version" {
   value       = var.enable_eks ? module.eks[0].cluster_version : null
 }
 
-output "eks_node_group_id" {
+output "eks_managed_node_groups" {
   description = "The ID of the EKS node group"
-  value       = var.enable_eks ? module.eks[0].node_group_id : null
+  value       = var.enable_eks ? module.eks[0].eks_managed_node_groups : null
+}
+output "oidc_provider" {
+  description = "The oidc_provider"
+  value       = var.enable_eks ? module.eks[0].oidc_provider : null
 }
