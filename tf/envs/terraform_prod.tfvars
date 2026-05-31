@@ -1,4 +1,4 @@
-# Production Environment - 3 AZ VPC Configuration with 1 Public and 1 Private Subnet per AZ
+# Production Environment - 3 AZ VPC Configuration with EKS Cluster
 
 name               = "demo-vpc"
 project            = "demo-project"
@@ -25,3 +25,12 @@ private_subnets    = [
 # NAT Gateway Configuration - High availability for production
 single_nat_gateway      = false
 one_nat_gateway_per_az  = true
+
+# EKS Configuration - Production grade
+enable_eks              = true
+kubernetes_version      = "1.34"
+eks_instance_types      = ["t3.large"]
+eks_min_nodes           = 3
+eks_max_nodes           = 15
+eks_desired_nodes       = 3
+eks_enable_public_endpoint = false

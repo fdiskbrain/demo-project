@@ -1,4 +1,4 @@
-# Output definitions for 3-AZ VPC with 9 public and 9 private subnets
+# Output definitions for VPC and EKS
 
 output "vpc_id" {
   description = "The ID of the VPC"
@@ -48,4 +48,30 @@ output "public_route_table_ids" {
 output "private_route_table_ids" {
   description = "List of IDs of private route tables"
   value       = module.aws_vpc.private_route_table_ids
+}
+
+# EKS Outputs
+output "eks_cluster_id" {
+  description = "The ID of the EKS cluster"
+  value       = var.enable_eks ? module.eks[0].cluster_id : null
+}
+
+output "eks_cluster_name" {
+  description = "The name of the EKS cluster"
+  value       = var.enable_eks ? module.eks[0].cluster_name : null
+}
+
+output "eks_cluster_endpoint" {
+  description = "The endpoint for the EKS cluster API server"
+  value       = var.enable_eks ? module.eks[0].cluster_endpoint : null
+}
+
+output "eks_cluster_version" {
+  description = "The Kubernetes version of the EKS cluster"
+  value       = var.enable_eks ? module.eks[0].cluster_version : null
+}
+
+output "eks_node_group_id" {
+  description = "The ID of the EKS node group"
+  value       = var.enable_eks ? module.eks[0].node_group_id : null
 }

@@ -1,4 +1,4 @@
-# Staging Environment - 3 AZ VPC Configuration with 1 Public and 1 Private Subnet per AZ
+# Staging Environment - 3 AZ VPC Configuration with EKS Cluster
 
 name               = "demo-vpc"
 project            = "demo-project"
@@ -25,3 +25,12 @@ private_subnets    = [
 # NAT Gateway Configuration
 single_nat_gateway      = false
 one_nat_gateway_per_az  = true
+
+# EKS Configuration - Staging environment
+enable_eks              = true
+kubernetes_version      = "1.34"
+eks_instance_types      = ["t3.medium"]
+eks_min_nodes           = 2
+eks_max_nodes           = 5
+eks_desired_nodes       = 2
+eks_enable_public_endpoint = false

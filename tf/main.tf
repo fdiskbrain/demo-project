@@ -1,19 +1,19 @@
-# Main configuration file for 3-AZ VPC with 3 public and 3 private subnets
+# Main configuration file for 3-AZ VPC with EKS cluster
 
 terraform {
   required_version = ">= 1.0.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = ">= 6.0.0"
     }
   }
 }
 
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       ManagedBy = "Terraform"
@@ -35,7 +35,7 @@ locals {
     ManagedBy   = "Terraform"
   }
 
-  name_prefix    = "${var.project}-${var.environment}"
-  is_production  = var.environment == "prod" ? true : false
-  instance_count = local.is_production ? 2 : 1
+  name_prefix   = "${var.project}-${var.environment}"
+  is_production = var.environment == "prod" ? true : false
+
 }
