@@ -91,13 +91,15 @@ jobs:
               body: `${status} **Terraform Validation**: ${outcome}`
             })
 
-  terraform-plan-dev:
+  terraform-plan-dev: 
+    env:
+      ENVIRONMENT: dev
     name: 'Terraform Plan - Dev'
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'dev' environment in GitHub repo settings if environment protection is needed
     
-    steps:
+    steps: &tfplan-steps
       - name: 'Checkout Code'
         uses: actions/checkout@v4
 
@@ -107,7 +109,7 @@ jobs:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
 
-      - name: 'Configure AWS Credentials'
+      - name: 'Configure AWS Credentials ${{ env.ENVIRONMENT }}'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           ## TODO: Setup AWS Role OIDC
@@ -121,11 +123,11 @@ jobs:
           cd ${{ env.TF_WORKING_DIR }}
           terraform init -input=false
 
-      - name: 'Terraform Plan'
+      - name: 'Terraform Plan ${{ env.ENVIRONMENT }}'
         id: plan
         run: |
           cd ${{ env.TF_WORKING_DIR }}
-          terraform plan -input=false -var-file="envs/terraform_dev.tfvars" -out=tfplan-dev -no-color  | tee plan-output.txt
+          terraform plan -input=false -var-file="envs/terraform_${{ env.ENVIRONMENT }}.tfvars" -out=tfplan-${{ env.ENVIRONMENT }} -no-color  | tee plan-output.txt
         continue-on-error: true
 
       - name: 'Upload Plan Artifact'
@@ -133,7 +135,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: terraform-plan-dev
-          path: ${{ env.TF_WORKING_DIR }}/tfplan-dev
+          path: ${{ env.TF_WORKING_DIR }}/tfplan-${{ env.ENVIRONMENT }}
           retention-days: 5
 
       - name: 'Comment PR with Plan'
@@ -151,46 +153,15 @@ jobs:
             })
 
   terraform-plan-staging:
+    env:
+      ENVIRONMENT: staging
     name: 'Terraform Plan - Staging'
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'staging' environment in GitHub repo settings if environment protection is needed
     
-    steps:
-      - name: 'Checkout Code'
-        uses: actions/checkout@v4
-
-      - name: 'Setup Terraform'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      # - name: 'Configure AWS Credentials'
-      #   uses: aws-actions/configure-aws-credentials@v4
-      #   with:
-      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN_STAGING }}
-      #     aws-region: ${{ env.AWS_REGION }}
-
-      - name: 'Terraform Init'
-        run: |
-          cd ${{ env.TF_WORKING_DIR }}
-          terraform init -input=false
-
-      - name: 'Terraform Plan'
-        id: plan
-        run: |
-          cd ${{ env.TF_WORKING_DIR }}
-          terraform plan -input=false -var-file="envs/terraform_staging.tfvars" -out=tfplan-staging
-        continue-on-error: true
-
-      - name: 'Upload Plan Artifact'
-        if: steps.plan.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-staging
-          path: ${{ env.TF_WORKING_DIR }}/tfplan-staging
-          retention-days: 5
+    steps: 
+      *tfplan-steps
 
   terraform-plan-test:
     name: 'Terraform Plan - Test'
