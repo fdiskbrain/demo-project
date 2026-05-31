@@ -127,8 +127,7 @@ jobs:
         id: plan
         run: |
           cd ${{ env.TF_WORKING_DIR }}
-          terraform plan -input=false -var-file="envs/terraform_${{ env.ENVIRONMENT }}.tfvars" -out=tfplan-${{ env.ENVIRONMENT }} -no-color  | tee plan-output.txt
-        continue-on-error: true
+          terraform plan -input=false -var-file="envs/terraform_${{ env.ENVIRONMENT }}.tfvars" -out=tfplan-${{ env.ENVIRONM-no-color  | tee plan-output.txt
 
       - name: 'Upload Plan Artifact'
         if: steps.plan.outcome == 'success'
@@ -149,7 +148,8 @@ jobs:
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## 📋 Terraform Plan - Dev Environment\n\n\`\`\`\n${planOutput}\n\`\`\``
+              body: `## 📋 Terraform Plan - ${{ env.ENVIRONMENT }}  Environment\n\n\`\`\`\n${planOutput}\n\`\`\``
+
             })
 
   terraform-plan-staging:
@@ -164,85 +164,35 @@ jobs:
       *tfplan-steps
 
   terraform-plan-test:
+    env:
+      ENVIRONMENT: test
     name: 'Terraform Plan - Test'
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'test' environment in GitHub repo settings if environment protection is needed
     
     steps:
-      - name: 'Checkout Code'
-        uses: actions/checkout@v4
+      *tfplan-steps
 
-      - name: 'Setup Terraform'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
 
-      # - name: 'Configure AWS Credentials'
-      #   uses: aws-actions/configure-aws-credentials@v4
-      #   with:
-      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN_TEST }}
-      #     aws-region: ${{ env.AWS_REGION }}
-
-      - name: 'Terraform Init'
-        run: |
-          cd ${{ env.TF_WORKING_DIR }}
-          terraform init -input=false
-
-      - name: 'Terraform Plan'
-        id: plan
-        run: |
-          cd ${{ env.TF_WORKING_DIR }}
-          terraform plan -input=false -var-file="envs/terraform_test.tfvars" -out=tfplan-test
-        continue-on-error: true
-
-      - name: 'Upload Plan Artifact'
-        if: steps.plan.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-test
-          path: ${{ env.TF_WORKING_DIR }}/tfplan-test
-          retention-days: 5
-
+   terraform-plan-perf:
+    env:
+      ENVIRONMENT: perf
+    name: 'Terraform Plan - perf'
+    needs: terraform-validate
+    runs-on: ubuntu-latest
+    # Note: Configure 'perf' environment in GitHub repo settings if environment protection is needed
+    
+    steps:
+      *tfplan-steps
+     
   terraform-plan-prod:
+    env:
+      ENVIRONMENT: prod
     name: 'Terraform Plan - Prod'
     needs: terraform-validate
     runs-on: ubuntu-latest
     # Note: Configure 'prod' environment in GitHub repo settings if environment protection is needed
     
     steps:
-      - name: 'Checkout Code'
-        uses: actions/checkout@v4
-
-      - name: 'Setup Terraform'
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      ## TODO: Uncomment and configure AWS credentials
-      # - name: 'Configure AWS Credentials'
-      #   uses: aws-actions/configure-aws-credentials@v4
-      #   with:
-      #     role-to-assume: ${{ secrets.AWS_ROLE_ARN_PROD }}
-      #     aws-region: ${{ env.AWS_REGION }}
-
-      - name: 'Terraform Init'
-        run: |
-          cd ${{ env.TF_WORKING_DIR }}
-          terraform init -input=false
-
-      - name: 'Terraform Plan'
-        id: plan
-        run: |
-          cd ${{ env.TF_WORKING_DIR }}
-          terraform plan -input=false -var-file="envs/terraform_prod.tfvars" -out=tfplan-prod
-        continue-on-error: true
-
-      - name: 'Upload Plan Artifact'
-        if: steps.plan.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-prod
-          path: ${{ env.TF_WORKING_DIR }}/tfplan-prod
-          retention-days: 30
+      *tfplan-steps
