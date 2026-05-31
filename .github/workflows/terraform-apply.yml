@@ -180,35 +180,35 @@ jobs:
           echo "✅ Deployment completed successfully"
           cat outputs.json
 
-      - name: 'Notify Success'
-        if: success()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: 'success',
-              context: 'Terraform Apply - ${{ needs.prepare.outputs.environment }}',
-              description: 'Infrastructure deployed successfully',
-              target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-            })
+      # - name: 'Notify Success'
+      #   if: success()
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       github.rest.repos.createCommitStatus({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         sha: context.sha,
+      #         state: 'success',
+      #         context: 'Terraform Apply - ${{ needs.prepare.outputs.environment }}',
+      #         description: 'Infrastructure deployed successfully',
+      #         target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+      #       })
 
-      - name: 'Notify Failure'
-        if: failure()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: context.sha,
-              state: 'failure',
-              context: 'Terraform Apply - ${{ needs.prepare.outputs.environment }}',
-              description: 'Infrastructure deployment failed',
-              target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
-            })
+      # - name: 'Notify Failure'
+      #   if: failure()
+      #   uses: actions/github-script@v7
+      #   with:
+      #     script: |
+      #       github.rest.repos.createCommitStatus({
+      #         owner: context.repo.owner,
+      #         repo: context.repo.repo,
+      #         sha: context.sha,
+      #         state: 'failure',
+      #         context: 'Terraform Apply - ${{ needs.prepare.outputs.environment }}',
+      #         description: 'Infrastructure deployment failed',
+      #         target_url: '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+      #       })
 
       - name: 'Slack Notification'
         if: always()
