@@ -79,3 +79,44 @@ output "oidc_provider" {
   description = "The oidc_provider"
   value       = var.enable_eks ? module.eks[0].oidc_provider : null
 }
+
+# RDS Aurora Outputs
+output "rds_cluster_id" {
+  description = "The RDS cluster identifier"
+  value       = var.enable_rds ? module.rds[0].cluster_id : null
+}
+
+output "rds_cluster_arn" {
+  description = "The RDS cluster ARN"
+  value       = var.enable_rds ? module.rds[0].cluster_arn : null
+}
+
+output "rds_cluster_endpoint" {
+  description = "Writer endpoint for the cluster"
+  value       = var.enable_rds ? module.rds[0].cluster_endpoint : null
+}
+
+output "rds_reader_endpoint" {
+  description = "A read-only endpoint for the cluster, automatically load-balanced across replicas"
+  value       = var.enable_rds ? module.rds[0].reader_endpoint : null
+}
+
+output "rds_cluster_port" {
+  description = "The database port"
+  value       = var.enable_rds ? module.rds[0].cluster_port : null
+}
+
+output "rds_cluster_database_name" {
+  description = "The database name"
+  value       = var.enable_rds ? module.rds[0].cluster_database_name : null
+}
+
+output "rds_cluster_security_group_id" {
+  description = "List of security groups ids associated with the cluster"
+  value       = var.enable_rds ? module.rds[0].security_group_id : null
+}
+
+output "rds_cluster_instances" {
+  description = "Map of cluster instances with their attributes"
+  value       = var.enable_rds ? module.rds[0].cluster_instances : null
+}

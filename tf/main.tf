@@ -1,4 +1,4 @@
-# Main configuration file for 3-AZ VPC with EKS cluster
+# Main configuration file for 3-AZ VPC with EKS cluster and RDS Aurora
 
 terraform {
   required_version = ">= 1.0.0"
