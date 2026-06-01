@@ -1,4 +1,4 @@
-name: 'Terraform PR Validation'
+name: 'Terraform Push Validation'
 
 on:
   push:
