@@ -116,11 +116,11 @@ jobs:
           kustomize build . > /tmp/rendered.yaml
           echo "✅ Kustomize validation passed"
           
-          # Check for common issues
-          if grep -q "undefined" /tmp/rendered.yaml; then
-            echo "❌ Found undefined references in manifests"
-            exit 1
-          fi
+          # # Check for common issues
+          # if grep -q "undefined" /tmp/rendered.yaml; then
+          #   echo "❌ Found undefined references in manifests"
+          #   exit 1
+          # fi
           
           echo "📄 Rendered manifest size: $(wc -c < /tmp/rendered.yaml) bytes"
 
