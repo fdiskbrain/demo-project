@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.14.1/v2_14_1_full.yaml
+- https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases/download/v2.14.1/v2_14_1_ingclass.yaml
+
+patches:
+- target:
+    kind: Deployment
+    name: aws-load-balancer-controller
+  patch: |-
+    - op: replace
+      path: /spec/template/spec/containers/0/args/0
+      value: --cluster-name=dev-eks
