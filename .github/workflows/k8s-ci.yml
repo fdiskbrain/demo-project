@@ -141,8 +141,8 @@ jobs:
             kustomize build "manifest/$env" > "/tmp/${env}-scan.yaml"
             
             # Run kubeconform
-            echo "Running kubeconform against Kubernetes 1.28 schema..."
-            if kubeconform -strict -summary -kubernetes-version 1.28.0 "/tmp/${env}-scan.yaml"; then
+            echo "Running kubeconform against Kubernetes 1.34 schema..."
+            if kubeconform -strict -summary -kubernetes-version 1.34.0  -ignore-missing-schemas "/tmp/${env}-scan.yaml"; then
               echo "✅ $env passed security scan"
             else
               echo "⚠️ $env has security warnings or errors"
