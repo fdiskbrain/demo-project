@@ -1,0 +1,338 @@
+name: 'Kubernetes Deploy'
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'manifest/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - test
+          - staging
+          - perf
+          - prod
+      confirm_deploy:
+        description: 'Type "yes" to confirm deployment (required for prod)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  AWS_REGION: 'us-east-1'
+  KUBECONFIG_TIMEOUT: 300
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  prepare:
+    name: 'Prepare Deployment'
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      cluster-name: ${{ steps.set-env.outputs.cluster-name }}
+      role-arn: ${{ steps.set-env.outputs.role-arn }}
+      kustomize-dir: ${{ steps.set-env.outputs.kustomize-dir }}
+    
+    steps:
+      - name: 'Set Environment Configuration'
+        id: set-env
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            # Auto-detect from branch or use dev for main
+            ENV="dev"
+          fi
+          
+          case $ENV in
+            dev)
+              CLUSTER_NAME="demo-project-dev-eks"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_DEV }}"
+              ;;
+            test)
+              CLUSTER_NAME="demo-project-test-eks"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_TEST }}"
+              ;;
+            staging)
+              CLUSTER_NAME="demo-project-staging-eks"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_STAGING }}"
+              ;;
+            perf)
+              CLUSTER_NAME="demo-project-perf-eks"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_PERF }}"
+              ;;
+            prod)
+              CLUSTER_NAME="demo-project-prod-eks"
+              ROLE_ARN="${{ secrets.AWS_ROLE_ARN_PROD }}"
+              ;;
+            *)
+              echo "❌ Invalid environment: $ENV"
+              exit 1
+              ;;
+          esac
+          
+          echo "environment=$ENV" >> $GITHUB_OUTPUT
+          echo "cluster-name=$CLUSTER_NAME" >> $GITHUB_OUTPUT
+          echo "role-arn=$ROLE_ARN" >> $GITHUB_OUTPUT
+          echo "kustomize-dir=manifest/$ENV" >> $GITHUB_OUTPUT
+
+      - name: 'Validate Production Confirmation'
+        if: github.event_name == 'workflow_dispatch' && inputs.environment == 'prod'
+        run: |
+          if [ "${{ github.event.inputs.confirm_deploy }}" != "yes" ]; then
+            echo "❌ Production deployment requires explicit confirmation. Type 'yes' in the confirm_deploy field."
+            exit 1
+          fi
+          echo "✅ Production deployment confirmed"
+
+  validate-manifests:
+    name: 'Validate Manifests'
+    runs-on: ubuntu-latest
+    needs: prepare
+    
+    steps:
+      - name: 'Checkout Code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Kustomize'
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: '5.0.0'
+
+      - name: 'Validate Kustomize Build'
+        run: |
+          cd ${{ needs.prepare.outputs.kustomize-dir }}
+          echo "🔍 Validating Kustomize manifests for ${{ needs.prepare.outputs.environment }}..."
+          kustomize build . > /tmp/rendered.yaml
+          echo "✅ Kustomize validation passed"
+          
+          # Check for common issues
+          if grep -q "undefined" /tmp/rendered.yaml; then
+            echo "❌ Found undefined references in manifests"
+            exit 1
+          fi
+          
+          echo "📄 Rendered manifest size: $(wc -c < /tmp/rendered.yaml) bytes"
+
+      - name: 'Upload Rendered Manifests'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-manifests-${{ needs.prepare.outputs.environment }}
+          path: /tmp/rendered.yaml
+          retention-days: 7
+
+  deploy:
+    name: 'Deploy to ${{ needs.prepare.outputs.environment }}'
+    needs: [prepare, validate-manifests]
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ needs.prepare.outputs.environment }}
+      url: https://${{ needs.prepare.outputs.environment }}.example.com
+    
+    steps:
+      - name: 'Checkout Code'
+        uses: actions/checkout@v4
+
+      - name: 'Configure AWS Credentials via OIDC'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 'Update Kubeconfig'
+        run: |
+          echo "🔧 Updating kubeconfig for cluster: ${{ needs.prepare.outputs.cluster-name }}"
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ needs.prepare.outputs.cluster-name }} \
+            --alias ${{ needs.prepare.outputs.environment }}
+          
+          echo "✅ Kubeconfig updated successfully"
+          kubectl config current-context
+
+      - name: 'Verify Cluster Connectivity'
+        run: |
+          echo "🔍 Verifying cluster connectivity..."
+          kubectl get nodes --context ${{ needs.prepare.outputs.environment }}
+          echo "✅ Cluster is accessible"
+
+      - name: 'Pre-Deployment Health Check'
+        run: |
+          echo "🏥 Running pre-deployment health check..."
+          
+          # Check if monitoring namespace exists
+          if kubectl get namespace monitoring --context ${{ needs.prepare.outputs.environment }} 2>/dev/null; then
+            echo "✅ Monitoring namespace exists"
+            
+            # Check existing deployments
+            kubectl get deployments -n monitoring --context ${{ needs.prepare.outputs.environment }} || true
+          else
+            echo "⚠️ Monitoring namespace does not exist, will be created during deployment"
+          fi
+
+      - name: 'Deploy Application'
+        id: deploy
+        run: |
+          echo "🚀 Deploying to ${{ needs.prepare.outputs.environment }}..."
+          
+          # Apply Kustomize manifests
+          kubectl apply -k ${{ needs.prepare.outputs.kustomize-dir }} --context ${{ needs.prepare.outputs.environment }}
+          
+          echo "✅ Deployment initiated successfully"
+
+      - name: 'Wait for Rollout'
+        if: steps.deploy.outcome == 'success'
+        run: |
+          echo "⏳ Waiting for deployment rollout..."
+          
+          # Wait for grafana deployment
+          kubectl rollout status deployment/grafana-with-sidecar \
+            -n monitoring \
+            --context ${{ needs.prepare.outputs.environment }} \
+            --timeout=${{ env.KUBECONFIG_TIMEOUT }}s || {
+              echo "❌ Rollout timeout exceeded"
+              exit 1
+            }
+          
+          echo "✅ Rollout completed successfully"
+
+      - name: 'Post-Deployment Verification'
+        if: steps.deploy.outcome == 'success'
+        run: |
+          echo "🔍 Running post-deployment verification..."
+          
+          # Verify pods are running
+          kubectl get pods -n monitoring --context ${{ needs.prepare.outputs.environment }}
+          
+          # Check service endpoints
+          kubectl get svc -n monitoring --context ${{ needs.prepare.outputs.environment }}
+          
+          # Verify ingress configuration
+          kubectl get ingress -n monitoring --context ${{ needs.prepare.outputs.environment }} || true
+          
+          echo "✅ Post-deployment verification completed"
+
+      - name: 'Capture Deployment Status'
+        if: always()
+        run: |
+          echo "📊 Capturing deployment status..."
+          
+          cat <<EOF > deployment-status.json
+          {
+            "environment": "${{ needs.prepare.outputs.environment }}",
+            "cluster": "${{ needs.prepare.outputs.cluster-name }}",
+            "status": "${{ job.status }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "commit": "${{ github.sha }}",
+            "branch": "${{ github.ref_name }}"
+          }
+          EOF
+          
+          cat deployment-status.json
+
+      - name: 'Upload Deployment Status'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-status-${{ needs.prepare.outputs.environment }}
+          path: deployment-status.json
+          retention-days: 30
+
+      - name: 'Slack Notification'
+        if: always()
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "Kubernetes Deployment - ${{ needs.prepare.outputs.environment }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Kubernetes Deployment - ${{ needs.prepare.outputs.environment }}*\nStatus: ${{ job.status }}\nCluster: ${{ needs.prepare.outputs.cluster-name }}\nRepository: ${{ github.repository }}\nBranch: ${{ github.ref_name }}\nCommit: ${{ github.sha }}"
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Workflow"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+  rollback:
+    name: 'Rollback if Failed'
+    needs: deploy
+    if: failure() && needs.deploy.result == 'failure'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 'Configure AWS Credentials'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: 'Update Kubeconfig'
+        run: |
+          aws eks update-kubeconfig \
+            --region ${{ env.AWS_REGION }} \
+            --name ${{ needs.prepare.outputs.cluster-name }} \
+            --alias ${{ needs.prepare.outputs.environment }}
+
+      - name: 'Execute Rollback'
+        run: |
+          echo "🔄 Rolling back deployment in ${{ needs.prepare.outputs.environment }}..."
+          
+          # Rollback grafana deployment
+          kubectl rollout undo deployment/grafana-with-sidecar \
+            -n monitoring \
+            --context ${{ needs.prepare.outputs.environment }} || {
+              echo "⚠️ Rollback failed or no previous revision available"
+            }
+          
+          echo "✅ Rollback initiated"
+
+      - name: 'Notify Rollback'
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "⚠️ ROLLBACK TRIGGERED",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Rollback Executed - ${{ needs.prepare.outputs.environment }}*\nReason: Deployment failed\nCluster: ${{ needs.prepare.outputs.cluster-name }}\nPlease investigate and redeploy when ready."
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true

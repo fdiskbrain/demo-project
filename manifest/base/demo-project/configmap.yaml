@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-config
+  namespace: monitoring
+data:
+  grafana.ini: |
+    [server]
+    http_port = 3000
+    
+    [security]
+    admin_user = admin
+    
+    [dashboards]
+    default_home_dashboard_path = /var/lib/grafana/dashboards/app-metrics.json
+    
+    [paths]
+    provisioning = /etc/grafana/provisioning
+    
+    [unified_alerting]
+    enabled = true

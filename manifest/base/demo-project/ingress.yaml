@@ -1,0 +1,27 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    # cert-manager annotations for automatic certificate management
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    # For staging/testing, use: cert-manager.io/cluster-issuer: "letsencrypt-staging"
+spec:
+  # TLS configuration
+  tls:
+  - hosts:
+    - grafana.example.com
+    secretName: grafana-tls-secret
+  rules:
+  - host: grafana.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
