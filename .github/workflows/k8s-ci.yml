@@ -16,7 +16,7 @@ on:
       - 'manifest/**'
 
 env:
-  KUSTOMIZE_VERSION: '5.0.0'
+  KUSTOMIZE_VERSION: '5.7.1'
   KUBECONFORM_VERSION: '0.6.4'
   KUBEVAL_VERSION: '0.16.1'
 
