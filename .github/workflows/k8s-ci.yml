@@ -71,7 +71,7 @@ jobs:
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
             # Build manifests
-            if ! kustomize build "manifest/$env" > "/tmp/${env}-rendered.yaml" 2>&1; then
+            if ! kubectl kustomize "manifest/$env" > "/tmp/${env}-rendered.yaml" 2>&1; then
               echo "❌ Failed to build $env environment"
               cat "/tmp/${env}-rendered.yaml"
               exit 1
