@@ -185,7 +185,6 @@ For complete CI/CD pipeline setup, see:
 
 - **[EKS Design](docs/eks-design.md)** - EKS architecture and design decisions
 - **[EKS Deployment Guide](docs/eks-deployment-guide.md)** - Complete EKS deployment instructions
-- **[EKS Implementation Summary](docs/eks-implementation-summary.md)** - EKS implementation overview
 
 ### RDS Aurora Documentation
 
@@ -306,7 +305,14 @@ See [RDS Quick Start](docs/rds_quickstart.md#troubleshooting) for RDS-specific t
 - Application docker image can be found at [https://github.com/fdiskbrain/k8s-sidecar/pkgs/container/k8s-sidecar](https://github.com/fdiskbrain/k8s-sidecar/pkgs/container/k8s-sidecar)
 
 
-## Enhancements  this project can do
-- [ ] Add CI/CD for application autotest
-- [ ] docker image for application can be scanned by ecr scan
-- [ ] security scan for application runtime
+## Future Enhancements
+
+The following improvements are planned for future iterations:
+
+- [ ] **Application CI/CD Pipeline** - Implement automated testing and deployment pipeline for applications
+- [ ] **Container Image Security Scanning** - Integrate ECR image scanning to detect vulnerabilities in Docker images
+- [ ] **Runtime Security Monitoring** - Add runtime security scanning and compliance checks for deployed applications
+- [ ] **Cost Optimization** - Implement automated cost tracking and optimization recommendations
+- [ ] **Disaster Recovery** - Add cross-region backup and disaster recovery capabilities
+- [ ] **Monitoring & Observability** - Enhanced monitoring with Prometheus, Grafana, and centralized logging
+- [ ] **GitOps Integration** - Implement GitOps workflow using ArgoCD or Flux for continuous deployment
