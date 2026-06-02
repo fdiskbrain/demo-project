@@ -34,8 +34,8 @@ jobs:
         uses: actions/checkout@v4
 
       - uses: azure/setup-kubectl@v4
-        # with:
-        #   version: '<version>' # default is latest stable
+        with:
+          version: '<version>' # default is latest stable
         id: install
 
       - name: 'Validate Kustomize Structure'
@@ -58,39 +58,39 @@ jobs:
           
           echo "✅ Kustomize structure is valid"
           # TODO: Add more checks here
-      # - name: 'Build and Validate All Environments'
-      #   run: |
-      #     echo "🏗️ Building manifests for all environments..."
+      - name: 'Build and Validate All Environments'
+        run: |
+          echo "🏗️ Building manifests for all environments..."
           
-      #     environments=("dev" "test" "staging" "perf" "prod")
+          environments=("dev" "test" "staging" "perf" "prod")
           
-      #     for env in "${environments[@]}"; do
-      #       echo ""
-      #       echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-      #       echo "Building environment: $env"
-      #       echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          for env in "${environments[@]}"; do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Building environment: $env"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
-      #       # Build manifests
-      #       kubectl kustomize "manifest/$env" > "/tmp/${env}-rendered.yaml" 2>&1;
+            # Build manifests
+            kubectl kustomize "manifest/$env" > "/tmp/${env}-rendered.yaml" 2>&1;
             
-      #       # Check for common issues
-      #       if grep -qi "error\|undefined\|not found" "/tmp/${env}-rendered.yaml"; then
-      #         echo "❌ Found errors in $env rendered manifests"
-      #         grep -i "error\|undefined\|not found" "/tmp/${env}-rendered.yaml"
-      #         exit 1
-      #       fi
+            # # Check for common issues
+            # if grep -qi "error\|undefined\|not found" "/tmp/${env}-rendered.yaml"; then
+            #   echo "❌ Found errors in $env rendered manifests"
+            #   grep -i "error\|undefined\|not found" "/tmp/${env}-rendered.yaml"
+            #   exit 1
+            # fi
             
-      #       # Count resources
-      #       resource_count=$(grep -c "^kind:" "/tmp/${env}-rendered.yaml" || echo "0")
-      #       file_size=$(wc -c < "/tmp/${env}-rendered.yaml")
+            # Count resources
+            resource_count=$(grep -c "^kind:" "/tmp/${env}-rendered.yaml" || echo "0")
+            file_size=$(wc -c < "/tmp/${env}-rendered.yaml")
             
-      #       echo "✅ $env environment built successfully"
-      #       echo "   Resources: $resource_count"
-      #       echo "   Size: $file_size bytes"
-      #     done
+            echo "✅ $env environment built successfully"
+            echo "   Resources: $resource_count"
+            echo "   Size: $file_size bytes"
+          done
           
-      #     echo ""
-      #     echo "✅ All environments validated successfully"
+          echo ""
+          echo "✅ All environments validated successfully"
 
       - name: 'Upload Rendered Manifests'
         uses: actions/upload-artifact@v4
