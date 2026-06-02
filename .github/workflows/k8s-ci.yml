@@ -33,10 +33,10 @@ jobs:
       - name: 'Checkout Code'
         uses: actions/checkout@v4
 
-      - name: 'Setup Kustomize'
-        uses: imranismail/setup-kustomize@v2
+      - uses: azure/setup-kubectl@v4
         with:
-          kustomize-version: ${{ env.KUSTOMIZE_VERSION }}
+          version: '<version>' # default is latest stable
+        id: install
 
       - name: 'Validate Kustomize Structure'
         run: |
@@ -71,11 +71,7 @@ jobs:
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             
             # Build manifests
-            if ! kubectl kustomize "manifest/$env" > "/tmp/${env}-rendered.yaml" 2>&1; then
-              echo "❌ Failed to build $env environment"
-              cat "/tmp/${env}-rendered.yaml"
-              exit 1
-            fi
+            kubectl kustomize "manifest/$env" > "/tmp/${env}-rendered.yaml" 2>&1;
             
             # Check for common issues
             if grep -qi "error\|undefined\|not found" "/tmp/${env}-rendered.yaml"; then
