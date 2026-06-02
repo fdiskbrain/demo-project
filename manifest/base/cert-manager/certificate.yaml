@@ -1,0 +1,58 @@
+# Certificate resource for Grafana
+# This will automatically request and renew TLS certificates
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-tls
+  namespace: monitoring
+spec:
+  # Secret name where the certificate will be stored
+  secretName: grafana-tls-secret
+  
+  # Duration of the certificate
+  duration: 2160h # 90 days
+  
+  # Renew before expiry
+  renewBefore: 360h # 15 days
+  
+  # Private key configuration
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+    rotationPolicy: Always
+  
+  # DNS names for the certificate
+  dnsNames:
+  - grafana.example.com
+  
+  # Reference to the ClusterIssuer
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# Certificate for staging/testing environments
+# Uses Let's Encrypt staging to avoid rate limits during development
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-tls-staging
+  namespace: monitoring
+spec:
+  secretName: grafana-tls-staging-secret
+  duration: 2160h
+  renewBefore: 360h
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+    rotationPolicy: Always
+  dnsNames:
+  - grafana.example.com
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
