@@ -1,0 +1,209 @@
+name: 'Terraform Drift Detection'
+
+on:
+  schedule:
+    # Run every day at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to check for drift'
+        required: false
+        type: choice
+        options:
+          - all
+          - dev
+          - test
+          - staging
+          - perf
+          - prod
+
+env:
+  TF_VERSION: '1.15.3'
+  AWS_REGION: 'us-east-1'
+  TF_WORKING_DIR: 'tf'
+
+permissions:
+  contents: read
+  id-token: write
+  issues: write
+
+jobs:
+  drift-detection:
+    name: 'Drift Detection - ${{ matrix.environment }}'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(github.event.inputs.environment == 'all' || !github.event.inputs.environment && '["dev", "test", "staging", "perf", "prod"]' || format('["{0}"]', github.event.inputs.environment)) }}
+    
+    steps:
+      - name: 'Checkout Code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Terraform'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: 'Configure AWS Credentials via OIDC'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets[format('AWS_ROLE_ARN_{0}', matrix.environment == 'dev' && 'DEV' || matrix.environment == 'test' && 'TEST' || matrix.environment == 'staging' && 'STAGING' || matrix.environment == 'perf' && 'PERF' || 'PROD')] }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-duration-seconds: 1800
+
+      - name: 'Set Variable File'
+        id: set-varfile
+        run: |
+          case "${{ matrix.environment }}" in
+            dev) echo "var-file=terraform_dev.tfvars" >> $GITHUB_OUTPUT ;;
+            test) echo "var-file=terraform_test.tfvars" >> $GITHUB_OUTPUT ;;
+            staging) echo "var-file=terraform_staging.tfvars" >> $GITHUB_OUTPUT ;;
+            perf) echo "var-file=terraform_perf.tfvars" >> $GITHUB_OUTPUT ;;
+            prod) echo "var-file=terraform_prod.tfvars" >> $GITHUB_OUTPUT ;;
+          esac
+
+      - name: 'Terraform Init'
+        run: |
+          cd ${{ env.TF_WORKING_DIR }}
+          terraform init -input=false
+
+      - name: 'Terraform Plan - Check Drift'
+        id: plan
+        run: |
+          cd ${{ env.TF_WORKING_DIR }}
+          terraform plan -input=false \
+            -var-file="envs/${{ steps.set-varfile.outputs.var-file }}" \
+            -detailed-exitcode \
+            -no-color > plan-output.txt 2>&1 || true
+          
+          EXIT_CODE=$?
+          echo "exit-code=$EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          if [ $EXIT_CODE -eq 0 ]; then
+            echo "✅ No drift detected in ${{ matrix.environment }}"
+            echo "drift-detected=false" >> $GITHUB_OUTPUT
+          elif [ $EXIT_CODE -eq 2 ]; then
+            echo "⚠️ DRIFT DETECTED in ${{ matrix.environment }}"
+            echo "drift-detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Error running terraform plan (exit code: $EXIT_CODE)"
+            echo "drift-detected=error" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 'Upload Plan Output'
+        if: steps.plan.outputs.drift-detected == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: drift-plan-${{ matrix.environment }}
+          path: ${{ env.TF_WORKING_DIR }}/plan-output.txt
+          retention-days: 30
+
+      - name: 'Create GitHub Issue for Drift'
+        if: steps.plan.outputs.drift-detected == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planOutput = fs.readFileSync('${{ env.TF_WORKING_DIR }}/plan-output.txt', 'utf8');
+            const environment = '${{ matrix.environment }}';
+            
+            const issueTitle = '🚨 Infrastructure Drift Detected - ' + environment.toUpperCase();
+            const issueBody = [
+              '## Infrastructure Drift Detected',
+              '',
+              '**Environment**: ' + environment,
+              '**Detection Time**: ' + new Date().toISOString(),
+              '**Repository**: ${{ github.repository }}',
+              '**Branch**: ${{ github.ref_name }}',
+              '',
+              '### Plan Output',
+              '``',
+              planOutput.substring(0, 65000),
+              '```',
+              '',
+              '### Action Required',
+              'Please review the drift and decide whether to:',
+              '1. Update the Terraform configuration to match actual infrastructure',
+              '2. Apply the plan to revert infrastructure to desired state',
+              '3. Investigate manual changes',
+              '',
+              '### Links',
+              '- [View Workflow Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})',
+              '- [Terraform Documentation](https://www.terraform.io/docs)',
+              '',
+              '---',
+              '*This issue was automatically created by the drift detection workflow.*'
+            ].join('\n');
+
+            // Check if similar issue already exists
+            const existingIssues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['infrastructure-drift', environment],
+              state: 'open'
+            });
+
+            if (existingIssues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: issueTitle,
+                body: issueBody,
+                labels: ['infrastructure-drift', environment, 'automated']
+              });
+            } else {
+              // Update existing issue with new drift info
+              const issue = existingIssues.data[0];
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: '## New Drift Detected\n\n**Time**: ' + new Date().toISOString() + '\n\n' + issueBody
+              });
+            }
+
+      - name: 'Slack Notification - Drift Detected'
+        if: steps.plan.outputs.drift-detected == 'true'
+        uses: slackapi/slack-github-action@v1.25.0
+        with:
+          payload: |
+            {
+              "text": "🚨 Infrastructure Drift Alert",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Infrastructure Drift Detected*\nEnvironment: *${{ matrix.environment }}*\nRepository: ${{ github.repository }}\nTime: ${new Date().toISOString()}"
+                  }
+                },
+                {
+                  "type": "actions",
+                  "elements": [
+                    {
+                      "type": "button",
+                      "text": {
+                        "type": "plain_text",
+                        "text": "View Details"
+                      },
+                      "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                    }
+                  ]
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: 'Summary Report'
+        if: always()
+        run: |
+          echo "## Drift Detection Summary - ${{ matrix.environment }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ steps.plan.outputs.drift-detected }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workflow**: [View Run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
