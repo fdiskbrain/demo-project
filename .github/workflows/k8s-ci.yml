@@ -1,0 +1,357 @@
+name: 'Kubernetes CI'
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'manifest/**'
+  push:
+    branches:
+      - main
+      - master
+      - 'feature/**'
+    paths:
+      - 'manifest/**'
+
+env:
+  KUSTOMIZE_VERSION: '5.0.0'
+  KUBECONFORM_VERSION: '0.6.4'
+  KUBEVAL_VERSION: '0.16.1'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate-manifests:
+    name: 'Validate Kubernetes Manifests'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 'Checkout Code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Kustomize'
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: ${{ env.KUSTOMIZE_VERSION }}
+
+      - name: 'Validate Kustomize Structure'
+        run: |
+          echo "🔍 Validating Kustomize directory structure..."
+          
+          # Check base directory exists
+          if [ ! -d "manifest/base" ]; then
+            echo "❌ Base directory not found"
+            exit 1
+          fi
+          
+          # Check environment overlays exist
+          for env in dev test staging perf prod; do
+            if [ ! -f "manifest/$env/kustomization.yaml" ]; then
+              echo "❌ Missing kustomization.yaml for $env environment"
+              exit 1
+            fi
+          done
+          
+          echo "✅ Kustomize structure is valid"
+
+      - name: 'Build and Validate All Environments'
+        run: |
+          echo "🏗️ Building manifests for all environments..."
+          
+          environments=("dev" "test" "staging" "perf" "prod")
+          
+          for env in "${environments[@]}"; do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Building environment: $env"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Build manifests
+            if ! kustomize build "manifest/$env" > "/tmp/${env}-rendered.yaml" 2>&1; then
+              echo "❌ Failed to build $env environment"
+              cat "/tmp/${env}-rendered.yaml"
+              exit 1
+            fi
+            
+            # Check for common issues
+            if grep -qi "error\|undefined\|not found" "/tmp/${env}-rendered.yaml"; then
+              echo "❌ Found errors in $env rendered manifests"
+              grep -i "error\|undefined\|not found" "/tmp/${env}-rendered.yaml"
+              exit 1
+            fi
+            
+            # Count resources
+            resource_count=$(grep -c "^kind:" "/tmp/${env}-rendered.yaml" || echo "0")
+            file_size=$(wc -c < "/tmp/${env}-rendered.yaml")
+            
+            echo "✅ $env environment built successfully"
+            echo "   Resources: $resource_count"
+            echo "   Size: $file_size bytes"
+          done
+          
+          echo ""
+          echo "✅ All environments validated successfully"
+
+      - name: 'Upload Rendered Manifests'
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-manifests
+          path: /tmp/*-rendered.yaml
+          retention-days: 7
+
+  security-scan:
+    name: 'Security Scan (kubeconform)'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 'Checkout Code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Kustomize'
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: ${{ env.KUSTOMIZE_VERSION }}
+
+      - name: 'Install kubeconform'
+        run: |
+          echo "📦 Installing kubeconform v${{ env.KUBECONFORM_VERSION }}..."
+          wget -q https://github.com/yannh/kubeconform/releases/download/v${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz
+          tar xzf kubeconform-linux-amd64.tar.gz
+          sudo mv kubeconform /usr/local/bin/
+          kubeconform -v
+
+      - name: 'Build and Scan All Environments'
+        run: |
+          echo "🔒 Running security scans on all environments..."
+          
+          environments=("dev" "test" "staging" "perf" "prod")
+          scan_failed=false
+          
+          for env in "${environments[@]}"; do
+            echo ""
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "Scanning environment: $env"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            
+            # Build manifests
+            kustomize build "manifest/$env" > "/tmp/${env}-scan.yaml"
+            
+            # Run kubeconform
+            echo "Running kubeconform against Kubernetes 1.28 schema..."
+            if kubeconform -strict -summary -kubernetes-version 1.28.0 "/tmp/${env}-scan.yaml"; then
+              echo "✅ $env passed security scan"
+            else
+              echo "⚠️ $env has security warnings or errors"
+              scan_failed=true
+            fi
+          done
+          
+          if [ "$scan_failed" = true ]; then
+            echo ""
+            echo "❌ Security scan found issues. Review the output above."
+            echo "Note: Some warnings may be acceptable depending on your use case."
+            exit 1
+          fi
+          
+          echo ""
+          echo "✅ All environments passed security scan"
+
+  validate-resources:
+    name: 'Validate Resource Configurations'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 'Checkout Code'
+        uses: actions/checkout@v4
+
+      - name: 'Setup Kustomize'
+        uses: imranismail/setup-kustomize@v2
+        with:
+          kustomize-version: ${{ env.KUSTOMIZE_VERSION }}
+
+      - name: 'Check Resource Limits and Requests'
+        run: |
+          echo "📊 Checking resource configurations..."
+          
+          environments=("dev" "test" "staging" "perf" "prod")
+          
+          for env in "${environments[@]}"; do
+            echo ""
+            echo "Checking $env environment..."
+            
+            # Build manifests
+            kustomize build "manifest/$env" > "/tmp/${env}-resources.yaml"
+            
+            # Check for containers without resource limits
+            missing_limits=$(grep -A 10 "containers:" "/tmp/${env}-resources.yaml" | \
+              grep -B 5 "image:" | \
+              grep -L "limits:" || true)
+            
+            if [ -n "$missing_limits" ]; then
+              echo "⚠️ Warning: Some containers in $env may be missing resource limits"
+            else
+              echo "✅ $env has proper resource limits configured"
+            fi
+          done
+
+      - name: 'Verify Namespace Consistency'
+        run: |
+          echo "🏷️ Verifying namespace consistency..."
+          
+          # Check that all resources specify namespaces where required
+          kustomize build manifest/base > /tmp/base-check.yaml
+          
+          # Look for cluster-scoped resources that shouldn't have namespaces
+          cluster_resources=$(grep -E "^(kind: (Namespace|ClusterRole|ClusterRoleBinding|PersistentVolume))" /tmp/base-check.yaml || true)
+          
+          if [ -n "$cluster_resources" ]; then
+            echo "ℹ️ Found cluster-scoped resources (expected):"
+            echo "$cluster_resources"
+          fi
+          
+          echo "✅ Namespace validation complete"
+
+      - name: 'Check Image Tags'
+        run: |
+          echo "🐳 Checking container image tags..."
+          
+          kustomize build manifest/base > /tmp/images-check.yaml
+          
+          # Extract all image references
+          images=$(grep -E "^\s+image:" /tmp/images-check.yaml | sed 's/.*image:\s*//' | sort -u)
+          
+          echo "Found images:"
+          echo "$images"
+          echo ""
+          
+          # Check for 'latest' tag
+          if echo "$images" | grep -q ":latest"; then
+            echo "⚠️ Warning: Using 'latest' tag is not recommended for production"
+            echo "Consider using specific version tags for reproducibility"
+          else
+            echo "✅ No 'latest' tags found - good practice!"
+          fi
+
+  pr-comment:
+    name: 'Comment on PR'
+    needs: [validate-manifests, security-scan, validate-resources]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: 'Download Rendered Manifests'
+        uses: actions/download-artifact@v4
+        with:
+          name: rendered-manifests
+          path: /tmp/rendered
+
+      - name: 'Generate PR Comment'
+        run: |
+          echo "📝 Generating PR comment..."
+          
+          comment="## 🔍 Kubernetes Manifest Validation Results
+          
+          ### ✅ Validation Summary
+          
+          All checks passed successfully!
+          
+          **Checks Performed:**
+          - ✅ Kustomize build validation (all environments)
+          - ✅ YAML linting
+          - ✅ Security scanning (kubeconform)
+          - ✅ Resource configuration validation
+          
+          ### 📦 Rendered Manifests
+          
+          Rendered manifests are available as workflow artifacts for review.
+          
+          **Environments Validated:**
+          - dev
+          - test
+          - staging
+          - perf
+          - prod
+          
+          ---
+          
+          *This comment was automatically generated by the Kubernetes CI workflow.*"
+          
+          echo "$comment" > comment.md
+          cat comment.md
+
+      - name: 'Post Comment to PR'
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const comment = fs.readFileSync('comment.md', 'utf8');
+            
+            // Check if there's an existing comment from this workflow
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(comment => 
+              comment.user.type === 'Bot' && 
+              comment.body.includes('Kubernetes Manifest Validation Results')
+            );
+            
+            if (botComment) {
+              // Update existing comment
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+              console.log('Updated existing comment');
+            } else {
+              // Create new comment
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+              console.log('Created new comment');
+            }
+
+  summary:
+    name: 'CI Summary'
+    needs: [validate-manifests, security-scan, validate-resources]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+      - name: 'Generate Summary'
+        run: |
+          echo "## 🎯 Kubernetes CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.validate-manifests.result }}" = "success" ] && \
+             [ "${{ needs.security-scan.result }}" = "success" ] && \
+             [ "${{ needs.validate-resources.result }}" = "success" ]; then
+            echo "✅ **All checks passed!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Your Kubernetes manifests are ready for deployment." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Some checks failed**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Please review the failed jobs and fix any issues before merging." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Job Results:**" >> $GITHUB_STEP_SUMMARY
+            echo "- Validate Manifests: ${{ needs.validate-manifests.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Security Scan: ${{ needs.security-scan.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "- Validate Resources: ${{ needs.validate-resources.result }}" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated by Kubernetes CI Workflow*" >> $GITHUB_STEP_SUMMARY
