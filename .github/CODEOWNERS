@@ -1,0 +1,21 @@
+# Code Owners for Terraform Infrastructure
+# This file defines individuals or teams that are responsible for code in this repository.
+# Read more: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owners for all files
+* @infrastructure-team
+
+# Terraform configuration files
+tf/ @infrastructure-team @terraform-admins
+
+# Environment-specific configurations
+tf/envs/terraform_dev.tfvars @dev-team
+tf/envs/terraform_staging.tfvars @qa-team
+tf/envs/terraform_perf.tfvars @perf-team
+tf/envs/terraform_prod.tfvars @prod-team @infrastructure-lead
+
+# GitHub Actions workflows
+.github/workflows/terraform-*.yml @infrastructure-team @devops-team
+
+# Documentation
+docs/TERRAFORM_*.md @infrastructure-team @technical-writers

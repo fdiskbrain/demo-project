@@ -70,6 +70,29 @@ Each environment has:
 
 ## Workflow Design
 
+### Pull  Workflow
+
+Triggered on all branches:
+
+```
+Push code to any branch
+    ↓
+Checkout Code
+    ↓
+Setup Terraform
+    ↓
+Terraform Init
+    ↓
+Terraform Validate
+    ↓
+Terraform Fmt Check
+    ↓
+Security Scan (tfsec)
+    ↓
+Generate Plan dev
+
+```
+
 ### Pull Request Workflow
 
 Triggered on PR creation/update to protected branches:
